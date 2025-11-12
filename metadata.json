@@ -1,0 +1,7 @@
+{
+  "name": "MãoCerta",
+  "description": "A service app that connects clients with professionals in areas such as electrician, plumber, gardener, and more. Users can find nearby professionals, request quotes, and manage services.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
