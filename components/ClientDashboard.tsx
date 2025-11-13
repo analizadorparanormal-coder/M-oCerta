@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Client, Professional, Profession, Banner } from '../types';
 import { MOCK_PROFESSIONALS } from '../constants';
-import { MapPinIcon, StarIcon, QuestionMarkCircleIcon } from './icons';
+import { MapPinIcon, StarIcon, QuestionMarkCircleIcon, PencilSquareIcon } from './icons';
 
 interface InteractiveMapProps {
   userLocation: { lat: number; lon: number } | null;
@@ -91,6 +91,7 @@ interface ClientDashboardProps {
   onLogout: () => void;
   onOpenPanel: () => void;
   onOpenSupport: () => void;
+  onOpenEditProfile: () => void;
   hasNewOffers?: boolean;
 }
 
@@ -121,7 +122,7 @@ const ProfessionalCard: React.FC<ProfessionalCardProps> = ({ professional, onSel
     </div>
 );
 
-export const ClientDashboard: React.FC<ClientDashboardProps> = ({ client, banners, onSelectProfessional, onLogout, onOpenPanel, onOpenSupport, hasNewOffers }) => {
+export const ClientDashboard: React.FC<ClientDashboardProps> = ({ client, banners, onSelectProfessional, onLogout, onOpenPanel, onOpenSupport, onOpenEditProfile, hasNewOffers }) => {
   const [professionals, setProfessionals] = useState<Professional[]>(MOCK_PROFESSIONALS);
   const [professionFilter, setProfessionFilter] = useState<Profession | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -243,6 +244,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ client, banner
         </div>
         <div className="flex items-center space-x-4">
             <span className="font-semibold hidden sm:block">Olá, {client.fullName.split(' ')[0]}!</span>
+            <button onClick={onOpenEditProfile} className="text-royal-blue font-semibold hover:underline px-2 py-1 flex items-center space-x-1">
+                <PencilSquareIcon className="w-5 h-5" />
+                <span className="hidden md:inline">Editar Perfil</span>
+            </button>
             <button onClick={onOpenSupport} className="text-royal-blue font-semibold hover:underline px-2 py-1 flex items-center space-x-1">
                 <QuestionMarkCircleIcon className="w-5 h-5" />
                 <span className="hidden md:inline">Suporte</span>

@@ -1,3 +1,4 @@
+
 export enum UserRole {
   CLIENT = 'CLIENT',
   PROFESSIONAL = 'PROFESSIONAL',
@@ -45,6 +46,7 @@ export interface Professional extends BaseUser {
   profession: Profession;
   experience: string;
   bankAccount: string;
+  pixKey?: string;
   rating: number;
   reviewsCount: number;
   reviews: Review[];
@@ -55,20 +57,28 @@ export interface Professional extends BaseUser {
   services: string[];
   warnings?: string[];
   blockedUntil?: string;
+  monthlyEarnings?: number;
+  acceptanceRate?: number;
 }
 
 export type User = Client | Professional;
 
+export interface OfferDetails {
+  laborCost: number;
+  materials: { name: string; price: number }[];
+  visitFee: number; // 0 if not charged
+  total: number;
+  visitDate: string;
+}
+
 export interface QuoteMessage {
   sender: 'client' | 'professional';
-  text: string;
+  text: string; // For offers, this will hold the description of the service.
   timestamp: Date;
   isOffer?: boolean;
-  offerDetails?: {
-    value: number;
-    visitDate: string;
-    visitFee?: number;
-  };
+  offerDetails?: OfferDetails;
+  isRead?: boolean;
+  isVisitOffer?: boolean;
 }
 
 export interface Quote {
@@ -81,6 +91,8 @@ export interface Quote {
   hasBeenRated?: boolean;
   professionalEnRoute?: boolean;
   eta?: string;
+  paymentStatus?: 'unpaid' | 'requested' | 'paid';
+  transitUpdate?: { text: string; timestamp: Date };
 }
 
 
@@ -88,9 +100,10 @@ export interface Denunciation {
     id: string;
     client: Client;
     professional: Professional;
+    date: Date;
+    // FIX: Added missing properties 'reason' and 'description' to the Denunciation interface to match the implementation in constants.ts and App.tsx.
     reason: string;
     description: string;
-    date: Date;
 }
 
 export interface Banner {

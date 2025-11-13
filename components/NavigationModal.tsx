@@ -1,13 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Quote } from '../types';
 import { MapPinIcon } from './icons';
 
 interface NavigationModalProps {
     quote: Quote;
     onClose: () => void;
+    onSendUpdate: (quoteId: string, message: string) => void;
 }
 
-export const NavigationModal: React.FC<NavigationModalProps> = ({ quote, onClose }) => {
+export const NavigationModal: React.FC<NavigationModalProps> = ({ quote, onClose, onSendUpdate }) => {
+    const [updateMessage, setUpdateMessage] = useState('');
+    const [updateSent, setUpdateSent] = useState(false);
+
+    const handleSend = () => {
+        if (updateMessage.trim()) {
+            onSendUpdate(quote.id, updateMessage);
+            setUpdateMessage('');
+            setUpdateSent(true);
+            setTimeout(() => setUpdateSent(false), 3000); // Reset after 3s
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
@@ -46,6 +59,27 @@ export const NavigationModal: React.FC<NavigationModalProps> = ({ quote, onClose
                         />
                     </svg>
                 </div>
+                
+                <div className="mt-4 pt-4 border-t">
+                    <h3 className="font-semibold text-gray-700 mb-2">Enviar atualização para o cliente</h3>
+                    <div className="flex space-x-2">
+                        <input
+                            type="text"
+                            value={updateMessage}
+                            onChange={(e) => setUpdateMessage(e.target.value)}
+                            placeholder="Ex: Chego em 5 minutos!"
+                            className="flex-1 p-2 border rounded-md focus:ring-royal-blue focus:border-royal-blue"
+                        />
+                        <button
+                            onClick={handleSend}
+                            disabled={updateSent}
+                            className="bg-gold-yellow text-royal-blue font-bold px-4 rounded-lg hover:bg-yellow-500 disabled:bg-gray-400"
+                        >
+                            {updateSent ? 'Enviado!' : 'Enviar'}
+                        </button>
+                    </div>
+                </div>
+
                 <div className="mt-6 text-right">
                      <button onClick={onClose} className="bg-royal-blue text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-800">
                         Fechar Navegação

@@ -38,6 +38,17 @@ export const TrackingModal: React.FC<TrackingModalProps> = ({ quote, onClose }) 
                     <span>Chegada Prevista: </span>
                     <span className="text-royal-blue">{quote.eta}</span>
                 </div>
+
+                {quote.transitUpdate && (
+                    <div className="my-4 p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg animate-fade-in">
+                        <p className="font-semibold text-blue-800">Última atualização do profissional:</p>
+                        <p className="text-blue-700 italic">"{quote.transitUpdate.text}"</p>
+                        <p className="text-xs text-right text-gray-500 mt-1">
+                            {new Date(quote.transitUpdate.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                    </div>
+                )}
+
                 <div className="bg-gray-200 h-80 w-full rounded-lg relative overflow-hidden shadow-inner">
                     <img 
                         src="https://www.medjugorje-news.com/wp-content/uploads/2021/08/google-maps.jpg" 

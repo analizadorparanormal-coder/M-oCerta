@@ -7,12 +7,14 @@ import { ProfessionalDashboard } from './components/ProfessionalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ClientPanel } from './components/ClientPanel';
 import { ScheduleVisitModal } from './components/ScheduleVisitModal';
+import { PreliminaryVisitModal } from './components/PreliminaryVisitModal';
 import { ChatDialog } from './components/ChatDialog';
 import { ReviewModal } from './components/ReviewModal';
 import { SupportModal } from './components/SupportModal';
 import { NavigationModal } from './components/NavigationModal';
 import { TrackingModal } from './components/TrackingModal';
-import { UserRole, User, Professional, Client, Quote, Denunciation, Banner, QuoteMessage, Review, SupportTicket, SupportMessage } from './types';
+import { EditProfileModal } from './components/EditProfileModal';
+import { UserRole, User, Professional, Client, Quote, Denunciation, Banner, QuoteMessage, Review, SupportTicket, SupportMessage, OfferDetails } from './types';
 import { MOCK_CLIENTS, MOCK_PROFESSIONALS, MOCK_QUOTES, MOCK_DENUNCIATIONS, MOCK_BANNERS, MOCK_SUPPORT_TICKETS } from './constants';
 
 type View = 'welcome' | 'auth' | 'clientDashboard' | 'professionalProfile' | 'professionalDashboard' | 'adminDashboard';
@@ -34,7 +36,9 @@ const App: React.FC = () => {
     // UI State
     const [isClientPanelOpen, setIsClientPanelOpen] = useState(false);
     const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+    const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     const [quoteToSchedule, setQuoteToSchedule] = useState<Quote | null>(null);
+    const [quoteForPreliminaryVisit, setQuoteForPreliminaryVisit] = useState<Quote | null>(null);
     const [quoteToReview, setQuoteToReview] = useState<Quote | null>(null);
     const [hasNewOffers, setHasNewOffers] = useState(false);
     const [chattingQuote, setChattingQuote] = useState<Quote | null>(null);
@@ -87,9 +91,45 @@ const App: React.FC = () => {
         setQuotes(prev => [...prev, quote]);
     };
 
-    const handleRespondToQuote = (quoteId: string, response: QuoteMessage) => {
+    const handleSendDetailedOffer = (quoteId: string, description: string, offerDetails: Omit<OfferDetails, 'total'>) => {
+        const total = offerDetails.laborCost + offerDetails.materials.reduce((sum, item) => sum + item.price, 0) + offerDetails.visitFee;
+        const fullOfferDetails: OfferDetails = { ...offerDetails, total };
+
+        const response: QuoteMessage = {
+            sender: 'professional',
+            text: description,
+            timestamp: new Date(),
+            isOffer: true,
+            offerDetails: fullOfferDetails,
+        };
+        
         setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, messages: [...q.messages, response], status: 'answered' } : q));
     };
+
+    const handleSchedulePreliminaryVisit = (quoteId: string, visitDetails: { date: string; time: string; fee: number; message: string }) => {
+        const visitDateTime = `${new Date(visitDetails.date + 'T00:00:00').toLocaleDateString()} às ${visitDetails.time}`;
+        
+        const offerDetails: OfferDetails = {
+            laborCost: 0,
+            materials: [],
+            visitFee: visitDetails.fee,
+            total: visitDetails.fee,
+            visitDate: visitDetails.date,
+        };
+
+        const response: QuoteMessage = {
+            sender: 'professional',
+            text: visitDetails.message || 'Proposta para visita técnica de avaliação.',
+            timestamp: new Date(),
+            isOffer: true,
+            isVisitOffer: true,
+            offerDetails,
+        };
+        
+        setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, messages: [...q.messages, response], status: 'answered' } : q));
+        setQuoteForPreliminaryVisit(null);
+    };
+
 
     const handleAcceptOffer = (quoteId: string) => {
         setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status: 'accepted' } : q));
@@ -102,6 +142,19 @@ const App: React.FC = () => {
     const handleConfirmSchedule = (quoteId: string, visitDateTime: string) => {
         setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status: 'scheduled', scheduledVisit: visitDateTime } : q));
         setQuoteToSchedule(null);
+    };
+    
+    const handleConfirmVisit = (quoteId: string) => {
+        setQuotes(prev => prev.map(q => {
+            if (q.id === quoteId) {
+                const lastMessage = q.messages[q.messages.length - 1];
+                const visitDate = lastMessage.offerDetails?.visitDate;
+                const time = '09:00'; // Placeholder, could be extracted if stored
+                const visitDateTime = `${new Date(visitDate + 'T00:00:00').toLocaleDateString()}`;
+                return { ...q, status: 'scheduled', scheduledVisit: visitDateTime };
+            }
+            return q;
+        }));
     };
 
     const handleCompleteService = (quoteId: string) => {
@@ -179,6 +232,26 @@ const App: React.FC = () => {
         });
     };
 
+    const handleMarkSentMessagesAsRead = (quoteId: string) => {
+        if (!currentUser) return;
+        setQuotes(prev =>
+            prev.map(q => {
+                if (q.id === quoteId) {
+                    const updatedMessages = q.messages.map(msg => {
+                        const isMyMessage = (currentUser.role === UserRole.CLIENT && msg.sender === 'client') ||
+                                          (currentUser.role === UserRole.PROFESSIONAL && msg.sender === 'professional');
+                        if (isMyMessage) {
+                            return { ...msg, isRead: true };
+                        }
+                        return msg;
+                    });
+                    return { ...q, messages: updatedMessages };
+                }
+                return q;
+            })
+        );
+    };
+
     const handleAddSupportTicket = (subject: string, message: string) => {
         if (!currentUser) return;
 
@@ -248,6 +321,203 @@ const App: React.FC = () => {
         const updatedQuote = { ...quoteToUpdate, professionalEnRoute: true, eta: etaString };
         setNavigatingQuote(updatedQuote);
     };
+    
+    const handleToggleAvailability = (professionalId: string, isAvailable: boolean) => {
+        const updatedProfessionals = professionals.map(p => 
+            p.id === professionalId ? { ...p, isAvailable } : p
+        );
+        setProfessionals(updatedProfessionals);
+
+        if (currentUser?.id === professionalId) {
+            setCurrentUser(prevUser => {
+                const updatedUser = updatedProfessionals.find(p => p.id === prevUser?.id);
+                return updatedUser || prevUser;
+            });
+        }
+    };
+
+    const handleRequestPayment = (quoteId: string) => {
+        setQuotes(prev =>
+            prev.map(q => q.id === quoteId ? { ...q, paymentStatus: 'requested' } : q)
+        );
+    };
+
+    const handleConfirmPayment = (quoteId: string) => {
+        setQuotes(prev =>
+            prev.map(q => q.id === quoteId ? { ...q, paymentStatus: 'paid' } : q)
+        );
+    };
+
+    const handleUpdatePixKey = (professionalId: string, pixKey: string) => {
+        setProfessionals(prev => 
+            prev.map(p => p.id === professionalId ? { ...p, pixKey } : p)
+        );
+        // Also update currentUser if they are the one being edited
+        if (currentUser?.id === professionalId) {
+            setCurrentUser(prev => prev ? { ...prev, pixKey } as Professional : null);
+        }
+        alert('Chave PIX atualizada com sucesso!');
+    };
+
+    const handleUpdateUser = (updatedUser: User) => {
+        setCurrentUser(updatedUser);
+        if (updatedUser.role === UserRole.CLIENT) {
+            setClients(prev => prev.map(c => c.id === updatedUser.id ? updatedUser as Client : c));
+        } else if (updatedUser.role === UserRole.PROFESSIONAL) {
+            setProfessionals(prev => prev.map(p => p.id === updatedUser.id ? updatedUser as Professional : p));
+        }
+        setIsEditProfileModalOpen(false);
+        alert('Perfil atualizado com sucesso!');
+    };
+
+    const handleSendTransitUpdate = (quoteId: string, text: string) => {
+        const updatedQuotes = quotes.map(q =>
+            q.id === quoteId
+                ? { ...q, transitUpdate: { text, timestamp: new Date() } }
+                : q
+        );
+        setQuotes(updatedQuotes);
+
+        // Also update the quote in the tracking modal if it's currently open
+        if (trackingQuote?.id === quoteId) {
+            const updatedTrackingQuote = updatedQuotes.find(q => q.id === quoteId);
+            if(updatedTrackingQuote) setTrackingQuote(updatedTrackingQuote);
+        }
+    };
+
+    const handleDownloadPdf = (quote: Quote) => {
+        const offer = quote.messages.find(m => m.isOffer && m.offerDetails);
+        if (!offer || !offer.offerDetails) return;
+
+        const { laborCost, materials, visitFee, total, visitDate } = offer.offerDetails;
+        const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        
+        const printableContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; border: 1px solid #eee;">
+                <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0033a0; padding-bottom: 10px;">
+                    <div>
+                        <h1 style="color: #0033a0; margin: 0; font-size: 28px;">MãoCerta</h1>
+                        <p style="margin: 0; color: #555;">Orçamento de Serviço</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <p style="margin: 0;"><strong>Orçamento #:</strong> ${quote.id.slice(-6)}</p>
+                        <p style="margin: 0;"><strong>Data:</strong> ${new Date().toLocaleDateString()}</p>
+                    </div>
+                </header>
+
+                <section style="margin-top: 20px; display: flex; justify-content: space-between;">
+                    <div>
+                        <h2 style="font-size: 16px; color: #333; margin-bottom: 5px;">PARA:</h2>
+                        <p style="margin: 0;">${quote.from.fullName}</p>
+                        <p style="margin: 0;">${quote.from.address}</p>
+                        <p style="margin: 0;">${quote.from.phone}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <h2 style="font-size: 16px; color: #333; margin-bottom: 5px;">DE:</h2>
+                        <p style="margin: 0;">${quote.to.fullName}</p>
+                        <p style="margin: 0;">${quote.to.profession}</p>
+                        <p style="margin: 0;">${quote.to.phone}</p>
+                    </div>
+                </section>
+
+                <section style="margin-top: 30px;">
+                    <h2 style="font-size: 16px; color: #333; margin-bottom: 10px;">Descrição do Serviço:</h2>
+                    <p style="font-style: italic; border-left: 3px solid #ffc72c; padding-left: 10px; color: #555;">
+                        ${offer.text}
+                    </p>
+                </section>
+
+                <section style="margin-top: 30px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead style="background-color: #f2f2f2;">
+                            <tr>
+                                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Item</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #eee;">Mão de Obra</td>
+                                <td style="padding: 8px; text-align: right; border-bottom: 1px solid #eee;">${formatCurrency(laborCost)}</td>
+                            </tr>
+                            ${materials.map(item => `
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #eee; padding-left: 20px;">- ${item.name}</td>
+                                    <td style="padding: 8px; text-align: right; border-bottom: 1px solid #eee;">${formatCurrency(item.price)}</td>
+                                </tr>
+                            `).join('')}
+                            ${visitFee > 0 ? `
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #eee; color: #c00;">Taxa de Visita</td>
+                                    <td style="padding: 8px; text-align: right; border-bottom: 1px solid #eee; color: #c00;">${formatCurrency(visitFee)}</td>
+                                </tr>
+                            ` : ''}
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight: bold; font-size: 18px;">
+                                <td style="padding: 10px 8px; text-align: right;">TOTAL</td>
+                                <td style="padding: 10px 8px; text-align: right;">${formatCurrency(total)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </section>
+
+                <footer style="margin-top: 40px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee; padding-top: 10px;">
+                    <p>Orçamento válido por 15 dias. Data sugerida para o serviço: ${new Date(visitDate + 'T00:00:00').toLocaleDateString()}.</p>
+                    <p>MãoCerta - O profissional certo na hora certa.</p>
+                </footer>
+            </div>
+        `;
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.visibility = 'hidden';
+        iframe.setAttribute('title', 'Print Frame');
+
+        const cleanup = () => {
+            // Check if the iframe is still a child of the body before removing to prevent errors.
+            if (iframe.parentNode === document.body) {
+                document.body.removeChild(iframe);
+            }
+        };
+
+        iframe.onload = () => {
+            try {
+                if (iframe.contentWindow) {
+                    iframe.contentWindow.focus(); // Focus for some browser policies
+                    iframe.contentWindow.print();
+                } else {
+                    throw new Error("Iframe content window is not available.");
+                }
+            } catch (error) {
+                console.error("Could not print from iframe:", error);
+                alert("Could not open print window. Please disable pop-up blockers and try again.");
+            } finally {
+                // Cleanup after a delay to allow the print dialog to open.
+                setTimeout(cleanup, 1000);
+            }
+        };
+
+        iframe.onerror = () => {
+            alert('An error occurred while loading the print content.');
+            cleanup();
+        };
+
+        document.body.appendChild(iframe);
+        
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+            doc.open();
+            doc.write('<!DOCTYPE html><html><head><title>Orçamento MãoCerta</title></head><body>' + printableContent + '</body></html>');
+            doc.close();
+        } else {
+            alert('An error occurred while trying to generate the quote. Please try again.');
+            cleanup(); // Clean up if doc is not available
+        }
+    };
 
     const renderView = () => {
         switch (view) {
@@ -265,6 +535,7 @@ const App: React.FC = () => {
                             onLogout={handleLogout}
                             onOpenPanel={() => setIsClientPanelOpen(true)}
                             onOpenSupport={() => setIsSupportModalOpen(true)}
+                            onOpenEditProfile={() => setIsEditProfileModalOpen(true)}
                             hasNewOffers={hasNewOffers}
                         />
                         {isClientPanelOpen && (
@@ -276,10 +547,13 @@ const App: React.FC = () => {
                                 onAcceptOffer={handleAcceptOffer}
                                 onRejectOffer={handleRejectOffer}
                                 onScheduleVisit={(quote) => setQuoteToSchedule(quote)}
+                                onConfirmVisit={handleConfirmVisit}
                                 onOpenChat={handleOpenChat}
                                 onReviewService={(quote) => setQuoteToReview(quote)}
                                 onAddDenunciation={handleAddDenunciation}
                                 onTrackProfessional={(quote) => setTrackingQuote(quote)}
+                                onConfirmPayment={handleConfirmPayment}
+                                onDownloadPdf={handleDownloadPdf}
                             />
                         )}
                         {quoteToSchedule && (
@@ -302,6 +576,7 @@ const App: React.FC = () => {
                                 currentUser={currentUser}
                                 onClose={() => setChattingQuote(null)}
                                 onSendMessage={handleSendMessage}
+                                onMarkAsRead={handleMarkSentMessagesAsRead}
                             />
                         )}
                          {isSupportModalOpen && currentUser && (
@@ -309,6 +584,13 @@ const App: React.FC = () => {
                                 user={currentUser}
                                 onClose={() => setIsSupportModalOpen(false)}
                                 onSubmit={handleAddSupportTicket}
+                            />
+                        )}
+                        {isEditProfileModalOpen && currentUser && (
+                            <EditProfileModal
+                                user={currentUser}
+                                onClose={() => setIsEditProfileModalOpen(false)}
+                                onUpdateUser={handleUpdateUser}
                             />
                         )}
                         {trackingQuote && (
@@ -333,12 +615,24 @@ const App: React.FC = () => {
                             professional={currentUser as Professional}
                             quotes={quotes}
                             onLogout={handleLogout}
-                            onRespondToQuote={handleRespondToQuote}
                             onOpenChat={handleOpenChat}
                             onCompleteService={handleCompleteService}
                             onOpenSupport={() => setIsSupportModalOpen(true)}
+                            onOpenEditProfile={() => setIsEditProfileModalOpen(true)}
                             onStartNavigation={handleStartNavigation}
+                            onToggleAvailability={handleToggleAvailability}
+                            onRequestPayment={handleRequestPayment}
+                            onUpdatePixKey={handleUpdatePixKey}
+                            onSendDetailedOffer={handleSendDetailedOffer}
+                            onOpenPreliminaryVisitModal={setQuoteForPreliminaryVisit}
                         />
+                        {quoteForPreliminaryVisit && (
+                            <PreliminaryVisitModal
+                                quote={quoteForPreliminaryVisit}
+                                onClose={() => setQuoteForPreliminaryVisit(null)}
+                                onSubmit={handleSchedulePreliminaryVisit}
+                            />
+                        )}
                         {chattingQuote && currentUser && (
                              <ChatDialog
                                 quote={chattingQuote}
@@ -346,6 +640,7 @@ const App: React.FC = () => {
                                 onClose={() => setChattingQuote(null)}
                                 onSendMessage={handleSendMessage}
                                 onCompleteService={handleCompleteService}
+                                onMarkAsRead={handleMarkSentMessagesAsRead}
                             />
                         )}
                         {isSupportModalOpen && currentUser && (
@@ -355,10 +650,18 @@ const App: React.FC = () => {
                                 onSubmit={handleAddSupportTicket}
                             />
                         )}
+                        {isEditProfileModalOpen && currentUser && (
+                            <EditProfileModal
+                                user={currentUser}
+                                onClose={() => setIsEditProfileModalOpen(false)}
+                                onUpdateUser={handleUpdateUser}
+                            />
+                        )}
                         {navigatingQuote && (
                             <NavigationModal
                                 quote={navigatingQuote}
                                 onClose={() => setNavigatingQuote(null)}
+                                onSendUpdate={handleSendTransitUpdate}
                             />
                         )}
                     </>
